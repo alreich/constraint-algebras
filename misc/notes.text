@@ -1,0 +1,11 @@
+In both the Right and Left Branching Time multiplication tables the following
+abbreviations are not used: RI, Z1, Z1V, Z2, Z2V, Z3V, Z6V, and Z8V.
+
+LEFT:  FI * D = {D, LO, O, S}
+RIGHT: FI * D = {D, O, S}  (i.e., the same as Allen's interval algebra)
+
+    See diagrams on sheet dated 12/28/92
+
+LEFT:  BI * D = {BI, D, F, MI, OI, PF}
+RIGHT: BI * D = {BI, D, F, MI, OI, PF, RBI, ROI}
+

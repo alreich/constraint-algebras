@@ -1,0 +1,24 @@
+(in-package "CM")
+
+#|
+
+ACTIONS:
+ o Create Temporal Constraint Network (TCN)
+    - Specify "kind" of algebra to create from list of all
+      registered algebra NAMEs (e.g., linear-interval).
+    - Specify name of TCN.
+    - Initialize constraint network using NAME.
+ o Merge TCNs
+    - Select TCNs to merge from list of available TCNs
+    - Specify name of new TCN.
+    - Merge TCNs (NOT IMPLEMENTED YET).
+
+|#
+
+(defun ALGEBRA-NAMES ()
+  "Returns a list of all registered algebras."
+  (mapcar #'(lambda (alg)
+              (get-algebra-name alg))
+          *algebras*))
+
+(setf NET (initialize-constraint-network 'linear-interval))

@@ -1,0 +1,22 @@
+PROGRAMMING:
+
+o Build a method that "merges" TCNs.
+
+o Start experimenting with inter-algebra constraint propagation.  Use
+  the interval-based duration algebra along with the machine shop example
+  as an initial testbed.
+
+o Change the name "network" in network-support.lisp (and elsewhere)
+  to "conmat" (i.e., constraint matrix).
+
+o Allow constraints to be retracted.  Try storing a number of previous
+  constraint matrices and storing all asserted constraints in order to
+  do this.
+
+
+THEORY:
+
+o Work out the scheme by which complex logical constraint assertions
+  wrt Allen's intervals can be translated into assertions in branching
+  time.
+

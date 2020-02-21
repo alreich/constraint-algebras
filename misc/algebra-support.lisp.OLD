@@ -1,0 +1,334 @@
+;;;-*- Mode: Lisp; Package: CONSTRAINT-MAINTENANCE -*-
+
+;;;---------------------------------------------------------------------------
+;;;---------------------------------------------------------------------------
+;;;                          ALGEBRA SUPPORT
+;;;---------------------------------------------------------------------------
+;;;---------------------------------------------------------------------------
+
+(in-package "CONSTRAINT-MAINTENANCE")
+
+;;; The exports below are handled by the DEFPACKAGE form.
+;;;(export '(define-algebra find-algebra delete-algebra dump-algebra))
+
+(defvar *ALGEBRAS* nil)			;List of defined algebras
+					; (This is the only global
+					;  variable in this system.)
+
+(defstruct (ALGEBRA
+	     (:conc-name get-algebra-)
+	     (:print-function print-algebra))
+  NAME					; symbol or string
+  DOCUMENTATION				; string
+  TYPE					; keyword
+  (ELEMENT-TYPE 'symbol)		; type specifier
+  RELS					; list of keywords
+  REL-CODING				; assoc list of dotted pairs
+  INV-RELS				; list
+  (EQUAL-P #'equal)			; closure
+  LESS-THAN-P				; closure
+  NUM-RELS				; integer
+  ZERO					; integer
+  EQUALITIES				; assoc list of dotted pairs
+  (ENCODER #'identity)			; closure
+  (DECODER #'identity)			; closure
+  MULT-TABLE				; 2-D array of integers
+  MULTIPLIER				; closure
+  ADDER					; closure
+  INVERTER				; closure
+  )
+
+(defun PRINT-ALGEBRA (alg stream depth)
+  (declare (ignore depth))
+  (format stream "#<~A-ALGEBRA>" (get-algebra-name alg)))
+
+(defun FIND-ALGEBRA (name)
+  (find name *algebras* :test #'equal :key #'get-algebra-name))
+
+(defun DELETE-ALGEBRA (algebra)
+  (setf *algebras* (remove (get-algebra-name algebra) *algebras*
+			   :test #'equal
+			   :key  #'get-algebra-name)))
+
+(defun REGISTER-ALGEBRA (algebra)
+  "Install algebra in list of existing algebras.  Removes previous versions."
+  (delete-algebra algebra)
+  (push algebra *algebras*))
+
+(defun GET-EQUALITY-ELEMENT (algebra type)
+  "Return the encoded equality element of the given type for the
+   given algebra."
+  (cdr (assoc type (get-algebra-equalities algebra))))
+
+;;;---------------------------------------------------------------------------
+
+;;; UTILITIES FOR CREATING ALGEBRAS (DEFINE-ALGEBRA)
+
+(defun MAKE-TYPE-OF-ALGEBRA (rel-sys-p)
+  (if rel-sys-p :relation-system :constraint-algebra))
+
+(defun MAKE-CODED-RELS (len rel-sys-p)
+  (let ((crels nil))
+    (if rel-sys-p
+	(dotimes (k len (reverse crels))
+	  (push (expt 2 k) crels))
+	(dotimes (k (1+ len) (reverse crels))
+	  (push k crels)))))
+
+(defun MAKE-ZERO-ELEMENT (coded-rels rel-sys-p)
+  (if rel-sys-p
+      (apply #'+   coded-rels)
+      (apply #'max coded-rels)))
+
+(defun MAKE-REL-ASSOC-LIST (rels crels rel-sys-p)
+  (if rel-sys-p
+      (pairlis rels crels)
+      (pairlis (push nil rels) crels)))
+
+(defun MAKE-LESS-THAN-P (rel-norms rels len)
+  (if rel-norms
+      #'(lambda (rel1 rel2)
+	  (< (second (assoc rel1 rel-norms))
+	     (second (assoc rel2 rel-norms))))
+      (let* ((crels  nil)
+	     (norms  (dotimes (k len (reverse crels))
+		       (push k crels)))
+	     (rnorms (pairlis rels norms)))
+	#'(lambda (rel1 rel2)
+	    (< (cdr (assoc rel1 rnorms))
+	       (cdr (assoc rel2 rnorms)))))))
+
+(defun MAKE-ENCODER-FUNCTION (relcode rel-sys-p)
+  (if rel-sys-p
+      #'(lambda (rel)
+	  (if (symbolp rel)
+	      (if rel
+		  (cdr (assoc rel relcode))
+		  0)
+	      (let ((result 0))
+		(dolist (r rel result)
+		  (setf result
+			(logior result
+				(cdr (assoc r relcode))))))))
+      #'(lambda (rel)
+	  (cdr (assoc rel relcode)))))
+
+(defun MAKE-DECODER-FUNCTION (relcode num-rels rel-sys-p)
+  (if rel-sys-p
+      #'(lambda (coded-rel)
+	  (let ((rels nil))
+	    (dotimes (val num-rels (if (cdr rels)
+				       (sort rels #'string<)
+				       (car rels)))
+	      (let ((v (expt 2 val)))
+		(if (logtest v coded-rel)
+		    (push (car (rassoc v relcode))
+			  rels))))))
+      #'(lambda (coded-rel)
+	  (car (rassoc coded-rel relcode)))))
+
+(defun ENCODE-ARRAY-LIST (array-list encoding-function)
+  (mapcar #'(lambda (array-row)
+	      (mapcar encoding-function array-row))
+	  array-list))
+
+(defun DECODE-ARRAY-LIST (array-list decoding-function)
+  (mapcar #'(lambda (array-row)
+	      (mapcar decoding-function array-row))
+	  array-list))
+
+(defun MAKE-MULTIPLIER-FUNCTION (num-rels mult-table rel-sys-p)
+  (if rel-sys-p
+      #'(lambda (coded-rel-1 coded-rel-2)
+	  (let ((result1  0))
+	    (dotimes (i num-rels result1)
+	      (if (logtest (expt 2 i) coded-rel-1)
+		  (setf result1
+			(logior
+			 result1
+			 (let ((result2 0))
+			   (dotimes (j num-rels result2)
+			     (if (logtest (expt 2 j) coded-rel-2)
+				 (setf result2
+				       (logior
+					result2
+					(aref mult-table i j))))))))))))
+      #'(lambda (coded-rel-1 coded-rel-2)
+	  (if (zerop (* coded-rel-1 coded-rel-2))
+	      0
+	      (aref mult-table (1- coded-rel-1) (1- coded-rel-2))))))
+
+(defun MAKE-ADDER-FUNCTION ()
+  #'(lambda (coded-rel-1 coded-rel-2)
+      (logand coded-rel-1 coded-rel-2)))
+
+(defun INV-MAPPING (coded-rels coded-inv-rels rel-sys-p)
+  (if rel-sys-p
+      (pairlis coded-rels coded-inv-rels)
+      (pairlis coded-rels (cons 0 coded-inv-rels))))
+
+(defun MAKE-INVERTER-FUNCTION (coded-rels coded-inv-rels num-rels rel-sys-p)
+  (let ((mapping (inv-mapping coded-rels coded-inv-rels rel-sys-p)))
+    (if rel-sys-p
+	#'(lambda (coded-rel)
+	    (let ((result1 0))
+	      (dotimes (i num-rels result1)
+		(if (logtest (expt 2 i) coded-rel)
+		    (setf result1
+			  (logior
+			   result1
+			   (cdr (assoc (expt 2 i) mapping))))))))
+	#'(lambda (coded-rel)
+	    (cdr (assoc coded-rel mapping))))))
+
+(defun DEFINE-CUSTOM-ALGEBRA (name documentation type element-type zero-element
+				   multiplication-function addition-function
+				   equal-p less-than-p inverse-function)
+  (let ((algebra (make-algebra
+		  :name          name
+		  :documentation documentation
+		  :type          type
+		  :element-type  element-type
+		  :zero          zero-element
+		  :equal-p       equal-p
+		  :less-than-p   less-than-p
+		  :multiplier    multiplication-function
+		  :adder         addition-function
+		  :inverter      inverse-function)))
+    (register-algebra algebra)
+    algebra))
+
+(defun DEFINE-DISCRETE-ALGEBRA
+    (name documentation relation-system-p equalities relation-list
+	  multiplication-table inverse-relations relation-norms)
+  (let* ((num-rels    (length relation-list))
+	 (crels       (make-coded-rels num-rels relation-system-p))
+	 (zero        (make-zero-element crels relation-system-p))
+	 (relcode     (make-rel-assoc-list relation-list crels relation-system-p))
+	 (less-than-p (make-less-than-p relation-norms relation-list num-rels))
+	 (encoder     (make-encoder-function relcode relation-system-p))
+	 (decoder     (make-decoder-function relcode num-rels relation-system-p))
+	 (mult-tbl    (make-array
+		       (list num-rels num-rels)
+		       :initial-contents
+		       (if (numberp (caar multiplication-table))
+			   multiplication-table
+			   (encode-array-list
+			    multiplication-table
+			    encoder))))
+	 (muliplier   (make-multiplier-function num-rels mult-tbl relation-system-p))
+	 (adder       (make-adder-function))
+	 (inverter    (make-inverter-function crels (mapcar encoder inverse-relations)
+					      num-rels relation-system-p))
+	 (type        (make-type-of-algebra relation-system-p))
+	 (eq-alist    (map-alist encoder equalities))
+	 (algebra     (make-algebra
+		       :name          name
+		       :documentation documentation
+		       :type          type
+		       :rels          relation-list
+		       :rel-coding    relcode
+		       :inv-rels      inverse-relations
+		       :less-than-p   less-than-p
+		       :num-rels      num-rels
+		       :zero          zero
+		       :equalities    eq-alist
+		       :encoder       encoder
+		       :decoder       decoder
+		       :mult-table    mult-tbl
+		       :multiplier    muliplier
+		       :adder         adder
+		       :inverter      inverter)))
+    (register-algebra algebra)
+    algebra))
+
+(defun DEFINE-ALGEBRA (name
+		       &KEY documentation type element-type inverse-relations
+		       relation-list multiplication-table relation-norms
+		       equal-p less-than-p equalities
+		       zero-element multiplication-function addition-function
+		       inverse-function)
+  (case type
+    (:relation-system    (define-discrete-algebra
+			     name documentation t   equalities relation-list
+			     multiplication-table inverse-relations relation-norms))
+    (:constraint-algebra (define-discrete-algebra
+			     name documentation nil equalities relation-list
+			     multiplication-table inverse-relations relation-norms))
+    (otherwise           (define-custom-algebra
+			     name documentation type element-type zero-element
+			     multiplication-function addition-function
+			     equal-p less-than-p inverse-function))))
+
+;;;----------------------------------------------------------------------
+#|
+;;; The following code is not yet completed.
+
+(defun DUMP-ALGEBRA (algebra
+		     &optional
+		     (coded-form-p t) (relation-system-p t) (destination t))
+  )
+
+(defun DUMP-MULT-TABLE (algebra coded-form-p relation-system-p destination)
+  (let ((rels       (get-algebra-rels algebra))
+	(multiplier (get-algebra-multiplier algebra))
+	(encoder    (get-algebra-encoder algebra))
+	(decoder    (get-algebra-decoder algebra)))
+    (format destination "~%'(")
+    (dolist (row rels)
+      (format destination "~%(")
+      (dolist (col rels)
+	(let ((item (funcall multiplier
+			     (funcall encoder row)
+			     (funcall encoder col))))
+	  (format destination " ~S "
+		  (if coded-form-p
+		      item
+		      (funcall decoder item)))))
+      (format destination ")"))
+    (format destination ")")))
+|#
+;;;---------------------------------------------------------------------------
+;;;                       TESTCASE FUNCTIONS
+;;;---------------------------------------------------------------------------
+
+;;; A USEFUL FUNCTION FOR DEBUGGING PURPOSES.
+
+(defun MULT (rel1 rel2 algebra &optional (decodep t))
+  (let* ((alg        (if (symbolp algebra)
+			 (find-algebra algebra)
+			 algebra))
+	 (decoder    (get-algebra-decoder    alg))
+	 (encoder    (get-algebra-encoder    alg))
+	 (multiplier (get-algebra-multiplier alg))
+	 (r1         (if (numberp rel1)
+			 rel1
+			 (funcall encoder rel1)))
+	 (r2         (if (numberp rel2)
+			 rel2
+			 (funcall encoder rel2))))
+    (if decodep
+	(funcall decoder (funcall multiplier r1 r2))
+	(funcall multiplier r1 r2))))
+
+;;; A function that helps output an algebra's mult table in a
+;;; different form for inclusion in a DEFINE-ALGEBRA form.
+
+(defun RELSYS-TO-CONALG (relmap algebra)
+  "Given a mapping (rel <--> crel) for a constraint algebra and the
+   corresponding relation system, this function outputs the coded
+   multiplication table for the constraint algebra. NOTE: MAKE SURE
+   THAT RELMAP IS IN REVERSE ORDER, I.E., THE CRELS SHOULD BE IN
+   DECENDING ORDER."
+  (let ((table nil)
+        (row   nil))
+    (dolist (row-elem relmap table)
+      (setf row nil)
+      (dolist (col-elem relmap)
+        (push (mult (cdr row-elem) (cdr col-elem) algebra nil)
+              row))
+      (push row table))))
+
+;;;---------------------------------------------------------------------------
+;;;                           END OF FILE
+;;;---------------------------------------------------------------------------
