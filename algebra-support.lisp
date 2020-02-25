@@ -13,6 +13,11 @@
   "List of defined algebras. This is the only global variable in
 this system.")
 
+(defun PRINT-ALGEBRA (alg stream depth)
+  "Provides a simple print representation for an algebra."
+  (declare (ignore depth))
+  (format stream "#<~A-ALGEBRA>" (get-algebra-name alg)))
+
 (defstruct (ALGEBRA
             (:conc-name get-algebra-)
             (:print-function print-algebra))
@@ -46,11 +51,6 @@ branching time algebra --- again see the TIME-94 paper."
   INVERTER				; closure
   ABBREVS                               ; assoc list of (not dotted)
   )
-
-(defun PRINT-ALGEBRA (alg stream depth)
-  "Provides a simple print representation for an algebra."
-  (declare (ignore depth))
-  (format stream "#<~A-ALGEBRA>" (get-algebra-name alg)))
 
 (defun FIND-ALGEBRA (name)
   "Given a keyword name, return an algebra in the list *algebras* if

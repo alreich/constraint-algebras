@@ -29,6 +29,13 @@ slower than a LOOP form--approx 6%--but does much less consing space
 
 ;;; A utility for turning an array into a list:
 
+(defun LIST-ROW (arr row col-dim)
+  "An auxillary function used by LIST-ARRAY.  It works on a single row."
+  (let ((row-list nil))
+    (dotimes (c col-dim (reverse row-list))
+      (push (aref arr row c) row-list))))
+
+
 (defun LIST-ARRAY (arr)
   "Turns an array into a list of lists.  Each list in the list corresponds
 to a row in the array.  The output of this is suitable as the INITIAL-CONTENTS
@@ -38,13 +45,6 @@ of make-array."
 	 (net-list nil))
     (dotimes (row row-dim (reverse net-list))
       (push (list-row arr row col-dim) net-list))))
-
-
-(defun LIST-ROW (arr row col-dim)
-  "An auxillary function used by LIST-ARRAY.  It works on a single row."
-  (let ((row-list nil))
-    (dotimes (c col-dim (reverse row-list))
-      (push (aref arr row c) row-list))))
 
 ;;;---------------------------------------------------------------------------
 
