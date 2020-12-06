@@ -1,3 +1,8 @@
+IMPORTANT NOTE:
+I've rewritten the code below in Python and expanded on its capabilities.
+See https://github.com/alreich/qualreas
+
+
 # constraint-algebras
 Algebras for qualitative reasoning about time, space, etc.
 
